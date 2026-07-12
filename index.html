@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Deriva - Reproductor de Regata</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        body {
+            background-color: #0f172a;
+            color: #f8fafc;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+        }
+        header {
+            border-bottom: 2px solid #334155;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .btn-subir {
+            background-color: #38bdf8;
+            color: #0f172a;
+            padding: 10px 15px;
+            border-radius: 5px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .dashboard {
+            display: grid;
+            grid-template-columns: 280px 1fr;
+            gap: 20px;
+        }
+        .panel {
+            background-color: #1e293b;
+            padding: 20px;
+            border-radius: 8px;
+            border: 1px solid #475569;
+            height: fit-content;
+        }
+        #mapa {
+            background-color: #111827;
+            height: 600px;
+            border-radius: 8px;
+            border: 1px solid #334155;
+        }
+        .dato-grupo { margin-bottom: 12px; }
+        .label { font-size: 11px; color: #94a3b8; text-transform: uppercase; margin: 0 0 2px 0; }
+        .dato { font-size: 20px; font-weight: bold; color: #34d399; margin: 0; }
+        
+        /* Controles del Reproductor */
+        .controles-reproductor {
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid #334155;
+            display: flex;
+            gap: 8px;
+            justify-content: space-between;
+        }
+        .btn-control {
+            background-color: #475569;
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            flex: 1;
+            font-size: 12px;
+        }
+        .btn-control:hover { background-color: #64748b; }
+        .btn-control:disabled { opacity: 0.3; cursor: not-allowed; }
+        
+        .leyenda {
+            margin-top: 15px;
+            padding: 8px;
+            background: #0f172a;
+            border-radius: 4px;
+            font-size: 11px;
+            text-align: center;
+        }
+        .barra-color {
+            height: 8px;
+            background: linear-gradient(to right, #ef4444, #eab308, #3b82f6);
+            border-radius: 3px;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div>
+            <h1 style="margin:0;">Deriva - Reproductor de Telemetría</h1>
+            <p style="margin:5px 0 0 0;">Estado: <span id="estado-sistema" style="color: #94a3b8;">○ Esperando log (.csv)</span></p>
+        </div>
+        <label class="btn-subir">
+            Cargar Log de Regata
+            <input type="file" id="archivo-csv" accept=".csv" style="display: none;">
+        </label>
+    </header>
+
+    <div class="dashboard">
+        <div class="panel">
+            <h2 style="margin-top: 0; color: #38bdf8; font-size: 15px;">Telemetría Dinámica</h2>
+            <hr style="border-color: #334155; margin-bottom: 12px;">
+            
+            <div class="dato-grupo"><p class="label">Tiempo Transcurrido</p><p class="dato" id="val-duracion">00:00:00</p></div>
+            <div class="dato-grupo"><p class="label">Distancia Estimada</p><p class="dato" id="val-distancia">0.00 nm</p></div>
+            <div class="dato-grupo"><p class="label">Velocidad Actual (SOG)</p><p class="dato" id="val-vmedio" style="color: #38bdf8;">0.0 kts</p></div>
+            <div class="dato-grupo"><p class="label">Rumbo Actual (COG)</p><p class="dato" id="val-vmax" style="color: #eab308;">000°</p></div>
+            
+            <!-- NUEVO: Botones de reproducción -->
+            <div class="controles-reproductor">
+                <button class="btn-control" id="btn-play" disabled>▶ Play</button>
+                <button class="btn-control" id="btn-pausa" disabled>║ Pausa</button>
+                <button class="btn-control" id="btn-reset" disabled>⟲ Reset</button>
+            </div>
+
+            <div class="leyenda">
+                Escala Térmica de Velocidad
+                <div class="barra-color"></div>
+            </div>
+        </div>
+
+        <div id="mapa"></div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script type="module" src="src/main.js"></script>
+</body>
+</html>
