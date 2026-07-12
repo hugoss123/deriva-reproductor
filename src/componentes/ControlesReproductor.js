@@ -3,29 +3,34 @@
 // No sabe qué son los "puntos" que reproduce, ni cómo se dibujan en el mapa.
 
 /**
- * Conecta los botones del DOM y expone funciones para habilitar/deshabilitar
- * su estado visual. La lógica de qué pasa al pulsarlos la decide quien llama.
- * @param {{onPlay:Function, onPause:Function, onReset:Function}} callbacks
+ * Conecta los botones del DOM (play/pausa/reset + interruptor de recorrido
+ * completo) y expone funciones para habilitar/deshabilitar su estado visual.
+ * La lógica de qué pasa al pulsarlos la decide quien llama.
+ * @param {{onPlay:Function, onPause:Function, onReset:Function, onToggleRecorridoCompleto:Function}} callbacks
  */
-export function inicializarControlesReproductor({ onPlay, onPause, onReset }) {
+export function inicializarControlesReproductor({ onPlay, onPause, onReset, onToggleRecorridoCompleto }) {
     const btnPlay = document.getElementById('btn-play');
     const btnPausa = document.getElementById('btn-pausa');
     const btnReset = document.getElementById('btn-reset');
+    const btnToggle = document.getElementById('btn-toggle-recorrido');
 
     btnPlay.addEventListener('click', onPlay);
     btnPausa.addEventListener('click', onPause);
     btnReset.addEventListener('click', onReset);
+    btnToggle.addEventListener('click', onToggleRecorridoCompleto);
 
     return {
         habilitar() {
             btnPlay.disabled = false;
             btnPausa.disabled = true;
             btnReset.disabled = false;
+            btnToggle.disabled = false;
         },
         deshabilitar() {
             btnPlay.disabled = true;
             btnPausa.disabled = true;
             btnReset.disabled = true;
+            btnToggle.disabled = true;
         },
         marcarReproduciendo() {
             btnPlay.disabled = true;
@@ -34,6 +39,11 @@ export function inicializarControlesReproductor({ onPlay, onPause, onReset }) {
         marcarPausado() {
             btnPlay.disabled = false;
             btnPausa.disabled = true;
+        },
+        /** Refleja visualmente si el interruptor de recorrido completo está activo. */
+        marcarRecorridoCompleto(activo) {
+            btnToggle.classList.toggle('activo', activo);
+            btnToggle.innerText = activo ? '👁 Recorrido completo: ON' : '👁 Recorrido completo: OFF';
         }
     };
 }
@@ -55,7 +65,7 @@ export function crearMotorReproduccion({ puntos, intervaloMs = 50, pasoFrames = 
                 if (onFin) onFin();
                 return;
             }
-            onFrame(puntos[indiceActual]);
+            onFrame(puntos[indiceActual], indiceActual);
             indiceActual += pasoFrames;
         }, intervaloMs);
     }
@@ -68,12 +78,16 @@ export function crearMotorReproduccion({ puntos, intervaloMs = 50, pasoFrames = 
     function reset() {
         pause();
         indiceActual = 0;
-        if (puntos.length > 0) onFrame(puntos[0]);
+        if (puntos.length > 0) onFrame(puntos[0], 0);
     }
 
     function estaReproduciendo() {
         return intervalId !== null;
     }
 
-    return { play, pause, reset, estaReproduciendo };
+    function obtenerIndiceActual() {
+        return indiceActual;
+    }
+
+    return { play, pause, reset, estaReproduciendo, obtenerIndiceActual };
 }

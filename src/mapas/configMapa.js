@@ -42,22 +42,57 @@ export function obtenerColorVelocidad(sog, vMax) {
 }
 
 /**
- * Dibuja la traza completa coloreada por velocidad en la capa de estela.
+ * Gestor de la estela progresiva: dibuja únicamente los tramos ya recorridos
+ * por el barco, o el recorrido completo si el usuario lo pide explícitamente.
+ * No sabe qué es "el tiempo actual" ni cómo se reproduce — solo dibuja u
+ * oculta segmentos cuando se le pide.
  * @param {L.LayerGroup} capaEstela
- * @param {{lat:number, lon:number, sog:number}[]} puntos
- * @param {number} maxSOG
  */
-export function dibujarEstela(capaEstela, puntos, maxSOG) {
-    capaEstela.clearLayers();
-    for (let m = 0; m < puntos.length - 1; m++) {
-        const pA = puntos[m];
-        const pB = puntos[m + 1];
-        L.polyline([[pA.lat, pA.lon], [pB.lat, pB.lon]], {
-            color: obtenerColorVelocidad(pA.sog, maxSOG),
-            weight: 4,
-            opacity: 0.85
-        }).addTo(capaEstela);
+export function crearGestorEstela(capaEstela) {
+    let segmentos = [];   // L.Polyline por tramo, o null si aún no está dibujado
+    let puntosRef = [];
+    let maxSOGRef = 0;
+
+    /** Prepara el gestor para una nueva ruta (se llama al cargar un archivo). */
+    function inicializar(puntos, maxSOG) {
+        capaEstela.clearLayers();
+        puntosRef = puntos;
+        maxSOGRef = maxSOG;
+        segmentos = new Array(Math.max(puntos.length - 1, 0)).fill(null);
     }
+
+    /** Dibuja (si no lo estaban ya) todos los tramos hasta el índice dado. */
+    function dibujarHasta(indice) {
+        const limite = Math.min(indice, segmentos.length);
+        for (let i = 0; i < limite; i++) {
+            if (segmentos[i] === null) {
+                const pA = puntosRef[i];
+                const pB = puntosRef[i + 1];
+                segmentos[i] = L.polyline([[pA.lat, pA.lon], [pB.lat, pB.lon]], {
+                    color: obtenerColorVelocidad(pA.sog, maxSOGRef),
+                    weight: 4,
+                    opacity: 0.85
+                }).addTo(capaEstela);
+            }
+        }
+    }
+
+    /** Dibuja el recorrido completo, de principio a fin. */
+    function dibujarCompleto() {
+        dibujarHasta(segmentos.length);
+    }
+
+    /** Oculta (quita del mapa) todos los tramos a partir del índice dado. */
+    function ocultarDesde(indice) {
+        for (let i = indice; i < segmentos.length; i++) {
+            if (segmentos[i] !== null) {
+                capaEstela.removeLayer(segmentos[i]);
+                segmentos[i] = null;
+            }
+        }
+    }
+
+    return { inicializar, dibujarHasta, dibujarCompleto, ocultarDesde };
 }
 
 /**

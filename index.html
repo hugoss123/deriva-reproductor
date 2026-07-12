@@ -73,6 +73,26 @@
         }
         .btn-control:hover { background-color: #64748b; }
         .btn-control:disabled { opacity: 0.3; cursor: not-allowed; }
+
+        .btn-toggle {
+            width: 100%;
+            margin-top: 8px;
+            background-color: #334155;
+            color: #94a3b8;
+            border: 1px solid #475569;
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 12px;
+        }
+        .btn-toggle:hover { background-color: #475569; }
+        .btn-toggle:disabled { opacity: 0.3; cursor: not-allowed; }
+        .btn-toggle.activo {
+            background-color: #38bdf8;
+            color: #0f172a;
+            border-color: #38bdf8;
+        }
         
         .leyenda {
             margin-top: 15px;
@@ -119,6 +139,7 @@
                 <button class="btn-control" id="btn-pausa" disabled>║ Pausa</button>
                 <button class="btn-control" id="btn-reset" disabled>⟲ Reset</button>
             </div>
+            <button class="btn-toggle" id="btn-toggle-recorrido" disabled>👁 Recorrido completo: OFF</button>
 
             <div class="leyenda">
                 Escala Térmica de Velocidad

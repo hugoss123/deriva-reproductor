@@ -5,20 +5,33 @@
 import { detectarFormato, parseFormatoGPS, parseFormatoSparse } from './servicios/lectorCSV.js';
 import { construirDesdeGPS, construirDesdeSparse } from './servicios/calculadoraNavegacion.js';
 import {
-    crearMapa, dibujarEstela, encuadrarMapa,
+    crearMapa, crearGestorEstela, encuadrarMapa,
     crearMarcadorBarco, moverMarcador, eliminarMarcador
 } from './mapas/configMapa.js';
 import { actualizarTelemetria, actualizarEstado } from './componentes/PanelTelemetria.js';
 import { inicializarControlesReproductor, crearMotorReproduccion } from './componentes/ControlesReproductor.js';
 
 const { mapa, capaEstela } = crearMapa('mapa');
+const gestorEstela = crearGestorEstela(capaEstela);
 let marcadorBarco = null;
 let motor = null;
+let mostrarRecorridoCompleto = false; // por defecto: solo se ve lo ya navegado
 
 const controles = inicializarControlesReproductor({
     onPlay: () => { motor?.play(); controles.marcarReproduciendo(); },
     onPause: () => { motor?.pause(); controles.marcarPausado(); },
-    onReset: () => { motor?.reset(); }
+    onReset: () => { motor?.reset(); },
+    onToggleRecorridoCompleto: () => {
+        mostrarRecorridoCompleto = !mostrarRecorridoCompleto;
+        controles.marcarRecorridoCompleto(mostrarRecorridoCompleto);
+
+        if (mostrarRecorridoCompleto) {
+            gestorEstela.dibujarCompleto();
+        } else {
+            // Al desactivarlo, oculta de nuevo lo que el barco aún no ha navegado
+            gestorEstela.ocultarDesde(motor ? motor.obtenerIndiceActual() : 0);
+        }
+    }
 });
 
 document.getElementById('archivo-csv').addEventListener('change', function (e) {
@@ -78,15 +91,22 @@ function procesarArchivo(rawTexto) {
         return;
     }
 
-    dibujarEstela(capaEstela, resultado.puntos, resultado.maxSOG);
+    gestorEstela.inicializar(resultado.puntos, resultado.maxSOG);
     encuadrarMapa(mapa, resultado.coordenadasMapa);
     marcadorBarco = crearMarcadorBarco(mapa, resultado.puntos[0].lat, resultado.puntos[0].lon);
 
+    // Cada archivo nuevo empieza en modo progresivo (solo se ve lo navegado)
+    mostrarRecorridoCompleto = false;
+    controles.marcarRecorridoCompleto(false);
+
     motor = crearMotorReproduccion({
         puntos: resultado.puntos,
-        onFrame: punto => {
+        onFrame: (punto, indice) => {
             moverMarcador(marcadorBarco, punto.lat, punto.lon);
             actualizarTelemetria(punto);
+            if (!mostrarRecorridoCompleto) {
+                gestorEstela.dibujarHasta(indice);
+            }
         },
         onFin: () => actualizarEstado("● Fin de la reproducción", "#94a3b8")
     });
