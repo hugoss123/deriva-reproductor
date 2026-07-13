@@ -43,22 +43,79 @@
         }
         #mapa {
             background-color: #111827;
-            height: 600px;
+            height: 480px;
             border-radius: 8px;
             border: 1px solid #334155;
+            transition: transform 0.5s ease;
+        }
+        .visor-reproductor {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .mapa-contenedor {
+            position: relative;
+        }
+        .btn-orientacion {
+            position: absolute;
+            top: 14px;
+            right: 14px;
+            z-index: 1000;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background-color: #1e293b;
+            border: 2px solid #475569;
+            color: #f8fafc;
+            font-size: 18px;
+            line-height: 1;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+        }
+        .btn-orientacion:hover { background-color: #334155; }
+        .btn-orientacion:disabled { opacity: 0.3; cursor: not-allowed; }
+        .btn-orientacion.activo {
+            background-color: #38bdf8;
+            border-color: #38bdf8;
+            color: #0f172a;
         }
         .dato-grupo { margin-bottom: 12px; }
         .label { font-size: 11px; color: #94a3b8; text-transform: uppercase; margin: 0 0 2px 0; }
         .dato { font-size: 20px; font-weight: bold; color: #34d399; margin: 0; }
-        
-        /* Controles del Reproductor */
+
+        /* Barra de controles del reproductor, debajo del mapa */
+        .barra-controles {
+            background-color: #1e293b;
+            padding: 15px 20px;
+            border-radius: 8px;
+            border: 1px solid #475569;
+        }
+        .fila-progreso {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 12px;
+        }
+        .tiempo-barra {
+            font-size: 12px;
+            color: #94a3b8;
+            font-variant-numeric: tabular-nums;
+            min-width: 62px;
+        }
+        #tiempo-total-barra { text-align: right; }
+        #barra-progreso {
+            flex: 1;
+            accent-color: #38bdf8;
+            cursor: pointer;
+        }
+        #barra-progreso:disabled { cursor: not-allowed; opacity: 0.4; }
+
         .controles-reproductor {
-            margin-top: 15px;
-            padding-top: 15px;
-            border-top: 1px solid #334155;
             display: flex;
             gap: 8px;
-            justify-content: space-between;
         }
         .btn-control {
             background-color: #475569;
@@ -73,27 +130,11 @@
         }
         .btn-control:hover { background-color: #64748b; }
         .btn-control:disabled { opacity: 0.3; cursor: not-allowed; }
-
-        .btn-toggle {
-            width: 100%;
-            margin-top: 8px;
-            background-color: #334155;
-            color: #94a3b8;
-            border: 1px solid #475569;
-            padding: 8px 12px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-weight: bold;
-            font-size: 12px;
-        }
-        .btn-toggle:hover { background-color: #475569; }
-        .btn-toggle:disabled { opacity: 0.3; cursor: not-allowed; }
-        .btn-toggle.activo {
+        .btn-control.activo {
             background-color: #38bdf8;
             color: #0f172a;
-            border-color: #38bdf8;
         }
-        
+
         .leyenda {
             margin-top: 15px;
             padding: 8px;
@@ -132,14 +173,8 @@
             <div class="dato-grupo"><p class="label">Distancia Estimada</p><p class="dato" id="val-distancia">0.00 nm</p></div>
             <div class="dato-grupo"><p class="label">Velocidad Actual (SOG)</p><p class="dato" id="val-vmedio" style="color: #38bdf8;">0.0 kts</p></div>
             <div class="dato-grupo"><p class="label">Rumbo Actual (COG)</p><p class="dato" id="val-vmax" style="color: #eab308;">000°</p></div>
-            
-            <!-- NUEVO: Botones de reproducción -->
-            <div class="controles-reproductor">
-                <button class="btn-control" id="btn-play" disabled>▶ Play</button>
-                <button class="btn-control" id="btn-pausa" disabled>║ Pausa</button>
-                <button class="btn-control" id="btn-reset" disabled>⟲ Reset</button>
-            </div>
-            <button class="btn-toggle" id="btn-toggle-recorrido" disabled>👁 Recorrido completo: OFF</button>
+            <div class="dato-grupo"><p class="label">Viradas (ceñida)</p><p class="dato" id="val-viradas" style="color: #f8fafc;">--</p></div>
+            <div class="dato-grupo"><p class="label">Trasluchadas (largo)</p><p class="dato" id="val-trasluchadas" style="color: #f8fafc;">--</p></div>
 
             <div class="leyenda">
                 Escala Térmica de Velocidad
@@ -147,7 +182,26 @@
             </div>
         </div>
 
-        <div id="mapa"></div>
+        <div class="visor-reproductor">
+            <div class="mapa-contenedor">
+                <div id="mapa"></div>
+                <button class="btn-orientacion" id="btn-orientacion" disabled title="Sin datos de viento">🧭</button>
+            </div>
+
+            <div class="barra-controles">
+                <div class="fila-progreso">
+                    <span class="tiempo-barra" id="tiempo-actual-barra">00:00:00</span>
+                    <input type="range" id="barra-progreso" min="0" max="0" value="0" disabled>
+                    <span class="tiempo-barra" id="tiempo-total-barra">00:00:00</span>
+                </div>
+                <div class="controles-reproductor">
+                    <button class="btn-control" id="btn-play" disabled>▶ Play</button>
+                    <button class="btn-control" id="btn-pausa" disabled>║ Pausa</button>
+                    <button class="btn-control" id="btn-reset" disabled>⟲ Reset</button>
+                    <button class="btn-control" id="btn-toggle-recorrido" disabled>👁 Recorrido: OFF</button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
