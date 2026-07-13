@@ -15,6 +15,15 @@ export function actualizarTelemetria(punto) {
 }
 
 /**
+ * Muestra el número de viradas y trasluchadas de la regata.
+ * @param {{viradas:number, trasluchadas:number}|null} maniobras - null si no hay datos de viento
+ */
+export function actualizarManiobras(maniobras) {
+    document.getElementById('val-viradas').innerText = maniobras ? maniobras.viradas : "N/D";
+    document.getElementById('val-trasluchadas').innerText = maniobras ? maniobras.trasluchadas : "N/D";
+}
+
+/**
  * Actualiza el mensaje de estado del sistema (arriba a la izquierda).
  * @param {string} texto
  * @param {string} color - código de color CSS, p.ej. "#34d399"

@@ -62,9 +62,9 @@ export function parseFormatoGPS(lineas) {
 
 /**
  * Parsea el formato multiplexado (id,valor,id,valor,...) sin posición GPS.
- * Canales: 0=tiempo, 51=SOG, 50=COG, 13=HDG.
+ * Canales: 0=tiempo, 51=SOG, 50=COG, 13=HDG, 4=TWA, 6=TWD.
  * @param {string[]} lineas
- * @returns {{t:number, sog:number, curso:number}[]}
+ * @returns {{t:number, sog:number, curso:number, twa:number|null, twd:number|null}[]}
  */
 export function parseFormatoSparse(lineas) {
     const datosFiltrados = [];
@@ -73,7 +73,7 @@ export function parseFormatoSparse(lineas) {
         if (!linea || linea.startsWith('!')) continue;
 
         const columnas = linea.split(',');
-        let tiempoFila = null, sogFila = null, cogFila = null, hdgFila = null;
+        let tiempoFila = null, sogFila = null, cogFila = null, hdgFila = null, twaFila = null, twdFila = null;
 
         for (let j = 0; j < columnas.length; j += 2) {
             const idCanal = columnas[j]?.trim();
@@ -84,12 +84,14 @@ export function parseFormatoSparse(lineas) {
             else if (idCanal === '51') sogFila = valorCanal; // SOG
             else if (idCanal === '50') cogFila = valorCanal; // COG
             else if (idCanal === '13') hdgFila = valorCanal; // HDG
+            else if (idCanal === '4') twaFila = valorCanal;  // TWA (viento aparente respecto al rumbo)
+            else if (idCanal === '6') twdFila = valorCanal;  // TWD (dirección real del viento)
         }
 
         if (tiempoFila !== null && tiempoFila > 40000) {
             const curso = (cogFila !== null) ? cogFila : hdgFila;
             if (sogFila !== null && curso !== null) {
-                datosFiltrados.push({ t: tiempoFila, sog: sogFila, curso });
+                datosFiltrados.push({ t: tiempoFila, sog: sogFila, curso, twa: twaFila, twd: twdFila });
             }
         }
     }

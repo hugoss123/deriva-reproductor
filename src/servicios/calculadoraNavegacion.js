@@ -32,17 +32,22 @@ export function formatearReloj(segundosTranscurridos) {
  * Construye la ruta a partir de posición GPS real.
  * Distancia = suma de Haversine entre puntos consecutivos (distancia real sobre la esfera).
  * @param {{tSeg:number, lat:number, lon:number, sog:number, curso:number}[]} crudos
+ * @param {number|null} direccionViento - dirección del viento en grados (si se conoce), para calcular el TWA
  */
-export function construirDesdeGPS(crudos) {
+export function construirDesdeGPS(crudos, direccionViento = null) {
     const primerTiempo = crudos[0].tSeg;
     let maxSOG = crudos[0].sog;
     let distanciaAcumulada = 0;
 
+    const twa0 = direccionViento !== null ? calcularTWA(crudos[0].curso, direccionViento) : null;
     const puntos = [{
         lat: crudos[0].lat,
         lon: crudos[0].lon,
         sog: crudos[0].sog,
         curso: crudos[0].curso,
+        twa: twa0,
+        twd: direccionViento,
+        segundos: 0,
         tiempoFormateado: "00:00:00",
         distancia: "0.00"
     }];
@@ -57,13 +62,17 @@ export function construirDesdeGPS(crudos) {
         distanciaAcumulada += distanciaHaversineNm(pAnt.lat, pAnt.lon, pAct.lat, pAct.lon);
         if (pAct.sog > maxSOG) maxSOG = pAct.sog;
 
+        const segundosTranscurridos = pAct.tSeg - primerTiempo;
         coordenadasMapa.push([pAct.lat, pAct.lon]);
         puntos.push({
             lat: pAct.lat,
             lon: pAct.lon,
             sog: pAct.sog,
             curso: pAct.curso,
-            tiempoFormateado: formatearReloj(pAct.tSeg - primerTiempo),
+            twa: direccionViento !== null ? calcularTWA(pAct.curso, direccionViento) : null,
+            twd: direccionViento,
+            segundos: segundosTranscurridos,
+            tiempoFormateado: formatearReloj(segundosTranscurridos),
             distancia: distanciaAcumulada.toFixed(2)
         });
     }
@@ -91,6 +100,9 @@ export function construirDesdeSparse(datosFiltrados, latInicial, lonInicial, anc
         lon: lonActual,
         sog: datosFiltrados[0].sog,
         curso: datosFiltrados[0].curso,
+        twa: datosFiltrados[0].twa ?? null,
+        twd: datosFiltrados[0].twd ?? null,
+        segundos: 0,
         tiempoFormateado: "00:00:00",
         distancia: "0.00"
     }];
@@ -117,13 +129,17 @@ export function construirDesdeSparse(datosFiltrados, latInicial, lonInicial, anc
         distanciaAcumulada += distanciaTramoNm;
         if (pAct.sog > maxSOG) maxSOG = pAct.sog;
 
+        const segundosTranscurridos = (pAct.t - primerTiempo) * 86400;
         coordenadasMapa.push([latActual, lonActual]);
         puntos.push({
             lat: latActual,
             lon: lonActual,
             sog: pAct.sog,
             curso: pAct.curso,
-            tiempoFormateado: formatearReloj((pAct.t - primerTiempo) * 86400),
+            twa: pAct.twa ?? null,
+            twd: pAct.twd ?? null,
+            segundos: segundosTranscurridos,
+            tiempoFormateado: formatearReloj(segundosTranscurridos),
             distancia: distanciaAcumulada.toFixed(2)
         });
     }
@@ -132,4 +148,75 @@ export function construirDesdeSparse(datosFiltrados, latInicial, lonInicial, anc
         puntos, coordenadasMapa, maxSOG,
         tipoPosicion: anclada ? 'estimada-anclada' : 'estimada-relativa'
     };
+}
+
+/** Normaliza una diferencia angular al rango (-180, 180]. */
+function normalizarDiferenciaAngular(diffGrados) {
+    return ((diffGrados % 360) + 540) % 360 - 180;
+}
+
+/**
+ * Ángulo aparente del viento respecto al rumbo del barco (TWA):
+ * 0° = viento de cara (proa), ±180° = viento de popa, signo = amura (banda).
+ * @param {number} curso - rumbo del barco en grados
+ * @param {number} direccionViento - dirección de la que viene el viento, en grados
+ */
+export function calcularTWA(curso, direccionViento) {
+    return normalizarDiferenciaAngular(curso - direccionViento);
+}
+
+/**
+ * Media angular (circular) de una lista de direcciones en grados, en [0, 360).
+ * Ignora valores null/undefined/NaN. Devuelve null si no hay ningún valor válido.
+ */
+export function promedioAngular(direcciones) {
+    let sumaX = 0, sumaY = 0, n = 0;
+    for (const d of direcciones) {
+        if (d === null || d === undefined || isNaN(d)) continue;
+        const rad = (d * Math.PI) / 180;
+        sumaX += Math.cos(rad);
+        sumaY += Math.sin(rad);
+        n++;
+    }
+    if (n === 0) return null;
+    let grados = (Math.atan2(sumaY / n, sumaX / n) * 180) / Math.PI;
+    if (grados < 0) grados += 360;
+    return grados;
+}
+
+/**
+ * Cuenta viradas (cruce de viento de cara, navegando de ceñida) y trasluchadas
+ * (cruce de viento de popa, navegando a favor) a partir del TWA de cada punto.
+ * Usa una ventana de tiempo para no contar como maniobra el ruido de la señal.
+ * @param {{segundos:number, twa:number|null}[]} puntos
+ * @returns {{viradas:number, trasluchadas:number}|null} null si no hay datos de viento
+ */
+export function calcularManiobras(puntos, ventanaSegundos = 15, umbralGrados = 40) {
+    let viradas = 0, trasluchadas = 0;
+    let huboDatosViento = false;
+    let j = 0;
+
+    for (let i = 0; i < puntos.length; i++) {
+        while (j < i && puntos[i].segundos - puntos[j].segundos > ventanaSegundos) j++;
+        if (i - j < 3) continue;
+
+        const twaAntes = puntos[j].twa;
+        const twaAhora = puntos[i].twa;
+        if (twaAntes === null || twaAntes === undefined || isNaN(twaAntes)) continue;
+        if (twaAhora === null || twaAhora === undefined || isNaN(twaAhora)) continue;
+        huboDatosViento = true;
+
+        const signoAntes = Math.sign(twaAntes);
+        const signoAhora = Math.sign(twaAhora);
+        const cambioDeAmura = signoAntes !== 0 && signoAhora !== 0 && signoAntes !== signoAhora;
+        const magnitudCambio = Math.abs(normalizarDiferenciaAngular(twaAhora - twaAntes));
+
+        if (cambioDeAmura && magnitudCambio > umbralGrados) {
+            const promedioAbs = (Math.abs(twaAntes) + Math.abs(twaAhora)) / 2;
+            if (promedioAbs < 90) viradas++; else trasluchadas++;
+            j = i; // evitar contar la misma maniobra varias veces
+        }
+    }
+
+    return huboDatosViento ? { viradas, trasluchadas } : null;
 }

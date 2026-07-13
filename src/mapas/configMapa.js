@@ -128,3 +128,78 @@ export function moverMarcador(marcador, lat, lon) {
 export function eliminarMarcador(mapa, marcador) {
     if (marcador) mapa.removeLayer(marcador);
 }
+
+/**
+ * Controla la orientación visual del mapa: Norte arriba (por defecto) o
+ * dirección del viento arriba. Rota el contenedor completo del mapa por CSS,
+ * así que la estela y el marcador rotan con él sin ningún cálculo adicional.
+ *
+ * Nota: al estar rotado por CSS (no hay plugin de rotación), el arrastre y
+ * el zoom con el ratón siguen funcionando pero su dirección visual puede no
+ * coincidir con el gesto mientras el mapa está girado — limitación conocida
+ * de esta técnica sencilla, aceptable para un visor de solo lectura.
+ * @param {L.Map} mapa
+ */
+export function crearControladorOrientacion(mapa) {
+    const contenedor = mapa.getContainer();
+    let modoViento = false;
+    let direccionViento = null;
+
+    function aplicarRotacion() {
+        const grados = (modoViento && direccionViento !== null) ? -direccionViento : 0;
+        contenedor.style.transform = `rotate(${grados}deg)`;
+        contenedor.style.transformOrigin = 'center center';
+    }
+
+    return {
+        /** Fija la dirección del viento (grados, 0-360) para esta ruta. */
+        establecerDireccionViento(grados) {
+            direccionViento = grados;
+            aplicarRotacion();
+        },
+        /** Alterna entre Norte arriba y viento arriba. Devuelve el nuevo modo. */
+        alternar() {
+            modoViento = !modoViento;
+            aplicarRotacion();
+            return modoViento;
+        },
+        /** Vuelve a Norte arriba y olvida la dirección de viento (nuevo archivo cargado). */
+        reiniciar() {
+            modoViento = false;
+            direccionViento = null;
+            aplicarRotacion();
+        },
+        tieneDireccionViento() {
+            return direccionViento !== null;
+        },
+        estaEnModoViento() {
+            return modoViento;
+        }
+    };
+}
+
+/**
+ * Conecta el botón redondo de orientación con el controlador correspondiente.
+ * @param {string} idBoton
+ * @param {ReturnType<typeof crearControladorOrientacion>} controlador
+ */
+export function inicializarBotonOrientacion(idBoton, controlador) {
+    const boton = document.getElementById(idBoton);
+
+    function actualizarAspecto() {
+        const disponible = controlador.tieneDireccionViento();
+        boton.disabled = !disponible;
+        boton.classList.toggle('activo', controlador.estaEnModoViento());
+        boton.title = !disponible
+            ? 'Sin datos de viento en este archivo'
+            : (controlador.estaEnModoViento() ? 'Volver a orientar al Norte' : 'Orientar según la dirección del viento');
+    }
+
+    boton.addEventListener('click', () => {
+        controlador.alternar();
+        actualizarAspecto();
+    });
+
+    actualizarAspecto();
+    return { actualizarAspecto };
+}
