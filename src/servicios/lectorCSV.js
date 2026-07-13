@@ -1,8 +1,3 @@
-// lectorCSV.js — "El pelador de patatas"
-// Único trabajo: abrir el texto crudo del CSV, detectar de qué formato viene
-// y devolver columnas limpias. No calcula rutas, no sabe de millas náuticas,
-// no sabe de mapas. Solo lee.
-
 /**
  * Detecta si el archivo trae posición GPS real (columnas latitude/longitude)
  * o si es el formato multiplexado sin posición (solo velocidad/rumbo).
@@ -17,16 +12,14 @@ export function detectarFormato(lineas) {
     return 'sparse';
 }
 
-// Normaliza fechas tipo "+0100" a "+01:00" para que Date las interprete
-// de forma fiable en cualquier navegador.
 function normalizarFechaISO(texto) {
     return texto.trim().replace(/([+-]\d{2})(\d{2})$/, '$1:$2');
 }
 
 /**
- * Parsea el formato CSV con columnas: timestamp,latitude,longitude,sog_kts,cog,hdg_true,...
+ * Parsea el formato CSV con columnas GPS reales.
  * @param {string[]} lineas
- * @returns {{tSeg:number, lat:number, lon:number, sog:number, curso:number}[]}
+ * @returns {{tSeg:number, lat:number, lon:number, sog:number, curso:number, twd:number|null, twa:number|null}[]}
  */
 export function parseFormatoGPS(lineas) {
     const cabecera = lineas[0].split(',').map(h => h.trim().toLowerCase());
@@ -36,7 +29,9 @@ export function parseFormatoGPS(lineas) {
         lon: cabecera.indexOf('longitude'),
         sog: cabecera.findIndex(h => h.includes('sog')),
         cog: cabecera.findIndex(h => h === 'cog'),
-        hdg: cabecera.findIndex(h => h.includes('hdg'))
+        hdg: cabecera.findIndex(h => h.includes('hdg')),
+        twd: cabecera.findIndex(h => h === 'twd' || h.includes('wind dir')),
+        twa: cabecera.findIndex(h => h === 'twa' || h.includes('wind ang'))
     };
 
     const puntos = [];
@@ -52,10 +47,21 @@ export function parseFormatoGPS(lineas) {
         const sog = parseFloat(columnas[idx.sog]);
         const curso = idx.cog >= 0 ? parseFloat(columnas[idx.cog])
             : (idx.hdg >= 0 ? parseFloat(columnas[idx.hdg]) : NaN);
+        
+        const twd = idx.twd >= 0 ? parseFloat(columnas[idx.twd]) : null;
+        const twa = idx.twa >= 0 ? parseFloat(columnas[idx.twa]) : null;
 
         if (isNaN(fecha.getTime()) || isNaN(lat) || isNaN(lon) || isNaN(sog) || isNaN(curso)) continue;
 
-        puntos.push({ tSeg: fecha.getTime() / 1000, lat, lon, sog, curso });
+        puntos.push({ 
+            tSeg: fecha.getTime() / 1000, 
+            lat, 
+            lon, 
+            sog, 
+            curso, 
+            twd: isNaN(twd) ? null : twd, 
+            twa: isNaN(twa) ? null : twa 
+        });
     }
     return puntos;
 }
@@ -81,17 +87,23 @@ export function parseFormatoSparse(lineas) {
             if (isNaN(valorCanal)) continue;
 
             if (idCanal === '0') tiempoFila = valorCanal;
-            else if (idCanal === '51') sogFila = valorCanal; // SOG
-            else if (idCanal === '50') cogFila = valorCanal; // COG
-            else if (idCanal === '13') hdgFila = valorCanal; // HDG
-            else if (idCanal === '4') twaFila = valorCanal;  // TWA (viento aparente respecto al rumbo)
-            else if (idCanal === '6') twdFila = valorCanal;  // TWD (dirección real del viento)
+            else if (idCanal === '51') sogFila = valorCanal; 
+            else if (idCanal === '50') cogFila = valorCanal; 
+            else if (idCanal === '13') hdgFila = valorCanal; 
+            else if (idCanal === '4') twaFila = valorCanal;  
+            else if (idCanal === '6') twdFila = valorCanal;  
         }
 
         if (tiempoFila !== null && tiempoFila > 40000) {
             const curso = (cogFila !== null) ? cogFila : hdgFila;
             if (sogFila !== null && curso !== null) {
-                datosFiltrados.push({ t: tiempoFila, sog: sogFila, curso, twa: twaFila, twd: twdFila });
+                datosFiltrados.push({ 
+                    t: tiempoFila, 
+                    sog: sogFila, 
+                    curso, 
+                    twa: twaFila, 
+                    twd: twdFila 
+                });
             }
         }
     }

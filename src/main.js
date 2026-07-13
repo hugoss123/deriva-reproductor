@@ -1,7 +1,3 @@
-// main.js — "El director de orquesta"
-// Es el único archivo que conoce a todos los demás. No pela patatas, no
-// cocina salsas, no emplata: coordina a quien sí sabe hacer cada cosa.
-
 import { detectarFormato, parseFormatoGPS, parseFormatoSparse } from './servicios/lectorCSV.js';
 import { construirDesdeGPS, construirDesdeSparse, calcularManiobras, promedioAngular } from './servicios/calculadoraNavegacion.js';
 import {
@@ -18,7 +14,7 @@ const controladorOrientacion = crearControladorOrientacion(mapa);
 const botonOrientacion = inicializarBotonOrientacion('btn-orientacion', controladorOrientacion);
 let marcadorBarco = null;
 let motor = null;
-let mostrarRecorridoCompleto = false; // por defecto: solo se ve lo ya navegado
+let mostrarRecorridoCompleto = false;
 
 const controles = inicializarControlesReproductor({
     onPlay: () => { motor?.play(); controles.marcarReproduciendo(); },
@@ -32,7 +28,6 @@ const controles = inicializarControlesReproductor({
         if (mostrarRecorridoCompleto) {
             gestorEstela.dibujarCompleto();
         } else {
-            // Al desactivarlo, oculta de nuevo lo que el barco aún no ha navegado
             gestorEstela.ocultarDesde(motor ? motor.obtenerIndiceActual() : 0);
         }
     }
@@ -64,16 +59,22 @@ function procesarArchivo(rawTexto) {
     let resultado;
 
     if (formato === 'gps') {
-        // Archivo con posición GPS real: sin estima, sin factor inventado
         const crudos = parseFormatoGPS(lineas);
         if (crudos.length === 0) {
             alert("Error: no se pudieron leer coordenadas GPS válidas en el archivo.");
             return;
         }
-        const direccionViento = pedirDireccionVientoManual();
+        
+        // Comprobar si los datos traen viento nativo en las columnas
+        let tieneVientoNativo = crudos.some(p => p.twd !== null);
+        let direccionViento = null;
+        
+        if (!tieneVientoNativo) {
+            direccionViento = pedirDireccionVientoManual();
+        }
+        
         resultado = construirDesdeGPS(crudos, direccionViento);
     } else {
-        // Archivo sin posición: velocidad y rumbo solamente → estima náutica
         const datosFiltrados = parseFormatoSparse(lineas);
         if (datosFiltrados.length === 0) {
             alert("Error: no se encontraron canales de velocidad y rumbo en el archivo.");
@@ -96,13 +97,13 @@ function procesarArchivo(rawTexto) {
         return;
     }
 
-    // Viradas y trasluchadas, a partir del TWA de cada punto (si hay datos de viento)
+    // Calcular maniobras
     const maniobras = calcularManiobras(resultado.puntos);
     actualizarManiobras(maniobras);
 
-    // Dirección de viento de referencia para el botón de orientación (media circular)
+    // Calcular viento medio para orientar el mapa
     const direccionVientoRuta = promedioAngular(resultado.puntos.map(p => p.twd));
-    controladorOrientacion.reiniciar(); // cada archivo nuevo empieza con el Norte arriba
+    controladorOrientacion.reiniciar(); 
     if (direccionVientoRuta !== null) {
         controladorOrientacion.establecerDireccionViento(direccionVientoRuta);
     }
@@ -112,7 +113,6 @@ function procesarArchivo(rawTexto) {
     encuadrarMapa(mapa, resultado.coordenadasMapa);
     marcadorBarco = crearMarcadorBarco(mapa, resultado.puntos[0].lat, resultado.puntos[0].lon);
 
-    // Cada archivo nuevo empieza en modo progresivo (solo se ve lo navegado)
     mostrarRecorridoCompleto = false;
     controles.marcarRecorridoCompleto(false);
     controles.configurarRango(resultado.puntos.length);
@@ -126,8 +126,6 @@ function procesarArchivo(rawTexto) {
             actualizarTelemetria(punto);
             controles.actualizarProgreso(indice, punto.tiempoFormateado, duracionTotalFormateada);
             if (!mostrarRecorridoCompleto) {
-                // Se llama a ambas para que funcione igual al reproducir hacia
-                // delante que al saltar hacia atrás con la barra de progreso.
                 gestorEstela.ocultarDesde(indice);
                 gestorEstela.dibujarHasta(indice);
             }
@@ -135,7 +133,7 @@ function procesarArchivo(rawTexto) {
         onFin: () => actualizarEstado("● Fin de la reproducción", "#94a3b8")
     });
 
-    motor.reset(); // pinta el primer punto y deja todo listo para arrancar
+    motor.reset(); 
     controles.habilitar();
 
     const mensajesEstado = {
@@ -146,8 +144,6 @@ function procesarArchivo(rawTexto) {
     actualizarEstado(mensajesEstado[resultado.tipoPosicion], "#34d399");
 }
 
-// Pregunta (opcional) la dirección aproximada del viento cuando el archivo no la trae.
-// Necesaria para contar viradas/trasluchadas y para orientar el mapa al viento.
 function pedirDireccionVientoManual() {
     const respuesta = window.prompt(
         "Este archivo no incluye datos de viento.\n" +
@@ -167,8 +163,6 @@ function pedirDireccionVientoManual() {
     return null;
 }
 
-// Pregunta (opcional) el punto de salida real cuando el archivo no trae posición.
-// Vive en main.js porque es interacción con el usuario, no cálculo ni lectura de datos.
 function pedirPuntoInicialManual() {
     const respuesta = window.prompt(
         "Este archivo no incluye posición GPS (solo velocidad y rumbo).\n" +
