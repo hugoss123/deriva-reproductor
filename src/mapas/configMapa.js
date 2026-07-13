@@ -147,8 +147,11 @@ export function crearControladorOrientacion(mapa) {
 
     function aplicarRotacion() {
         const grados = (modoViento && direccionViento !== null) ? -direccionViento : 0;
-        contenedor.style.transform = `rotate(${grados}deg)`;
-        contenedor.style.transformOrigin = 'center center';
+        const mapPane = mapa.getContainer().querySelector('.leaflet-map-pane');
+if (mapPane) {
+    mapPane.style.transform = `rotate(${grados}deg)`;
+    mapPane.style.transformOrigin = 'center center'; 
+}
     }
 
     return {
