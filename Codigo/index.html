@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Deriva - Reproductor de Regata</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        body {
+            background-color: #0f172a;
+            color: #f8fafc;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+        }
+        header {
+            border-bottom: 2px solid #334155;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .btn-subir {
+            background-color: #38bdf8;
+            color: #0f172a;
+            padding: 10px 15px;
+            border-radius: 5px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        /* Tramos | reproductor | telemetría. El mapa se queda con el hueco libre. */
+        .dashboard {
+            display: grid;
+            grid-template-columns: 280px minmax(0, 1fr) 280px;
+            gap: 20px;
+        }
+        /* En pantallas estrechas las tres columnas ahogarían el mapa: se apilan. */
+        @media (max-width: 1200px) {
+            .dashboard { grid-template-columns: 1fr; }
+        }
+        .panel {
+            background-color: #1e293b;
+            padding: 20px;
+            border-radius: 8px;
+            border: 1px solid #475569;
+            height: fit-content;
+        }
+        /* Marco visible del mapa: recorta el mapa girado para que no se salga. */
+        .mapa-marco {
+            position: relative;
+            height: 480px;
+            overflow: hidden;
+            border-radius: 8px;
+            border: 1px solid #334155;
+            background-color: #111827;
+        }
+        #mapa {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 700px;
+            height: 700px;
+            background-color: #111827;
+            transform-origin: center center;
+            transform: translate(-50%, -50%);
+            transition: transform 0.4s ease;
+        }
+        /* Controles propios, fuera de #mapa para que NO giren con el mapa. */
+        .zoom-custom {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 1px 5px rgba(0,0,0,0.4);
+            border-radius: 4px;
+        }
+        .zoom-custom button {
+            width: 30px;
+            height: 30px;
+            background: #fff;
+            color: #000;
+            border: 1px solid #bbb;
+            font-size: 18px;
+            line-height: 1;
+            cursor: pointer;
+        }
+        .zoom-custom button:first-child { border-radius: 4px 4px 0 0; border-bottom: none; }
+        .zoom-custom button:last-child { border-radius: 0 0 4px 4px; }
+        .atribucion-custom {
+            position: absolute;
+            bottom: 0;
+            right: 0;
+            z-index: 1000;
+            background: rgba(255,255,255,0.75);
+            color: #333;
+            font-size: 10px;
+            padding: 1px 5px;
+            border-radius: 3px 0 0 0;
+        }
+        .visor-reproductor {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .mapa-contenedor {
+            position: relative;
+        }
+        .btn-orientacion {
+            position: absolute;
+            top: 14px;
+            right: 14px;
+            z-index: 1000;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background-color: #1e293b;
+            border: 2px solid #475569;
+            color: #f8fafc;
+            font-size: 18px;
+            line-height: 1;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+        }
+        .btn-orientacion:hover { background-color: #334155; }
+        .btn-orientacion:disabled { opacity: 0.3; cursor: not-allowed; }
+        .btn-orientacion.activo {
+            background-color: #38bdf8;
+            border-color: #38bdf8;
+            color: #0f172a;
+        }
+        /* Cuadro de tramos (legs) de ceñida y popa */
+        .resumen-tramos {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+        .conteo {
+            flex: 1;
+            background-color: #0f172a;
+            border-radius: 4px;
+            padding: 6px 8px;
+            font-size: 11px;
+            color: #94a3b8;
+            border-left: 3px solid #475569;
+        }
+        .conteo b { font-size: 14px; color: #f8fafc; }
+        .conteo-cenida { border-left-color: #38bdf8; }
+        .conteo-popa { border-left-color: #34d399; }
+        .lista-tramos {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            max-height: 260px;
+            overflow-y: auto;
+        }
+        .tramo {
+            display: flex;
+            align-items: baseline;
+            gap: 8px;
+            background-color: #0f172a;
+            border-radius: 4px;
+            padding: 6px 8px;
+            border-left: 3px solid #475569;
+            font-size: 12px;
+        }
+        .tramo-cenida { border-left-color: #38bdf8; }
+        .tramo-popa { border-left-color: #34d399; }
+        .tramo-nombre { font-weight: bold; color: #f8fafc; }
+        .tramo-datos {
+            margin-left: auto;
+            text-align: right;
+            font-size: 10px;
+            color: #94a3b8;
+            font-variant-numeric: tabular-nums;
+        }
+        .tramos-vacio {
+            font-size: 11px;
+            color: #94a3b8;
+            font-style: italic;
+        }
+
+        .dato-grupo { margin-bottom: 12px; }
+        .label { font-size: 11px; color: #94a3b8; text-transform: uppercase; margin: 0 0 2px 0; }
+        .dato { font-size: 20px; font-weight: bold; color: #34d399; margin: 0; }
+
+        /* Barra de controles del reproductor, debajo del mapa */
+        .barra-controles {
+            background-color: #1e293b;
+            padding: 15px 20px;
+            border-radius: 8px;
+            border: 1px solid #475569;
+        }
+        .fila-progreso {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 12px;
+        }
+        .tiempo-barra {
+            font-size: 12px;
+            color: #94a3b8;
+            font-variant-numeric: tabular-nums;
+            min-width: 62px;
+        }
+        #tiempo-total-barra { text-align: right; }
+
+        /* Barra de progreso con selector de intervalo (dos handles + cabezal de
+           reproducción). La pista y el tramo seleccionado los pintan los divs;
+           los <input type="range"> van superpuestos y transparentes, cada uno
+           aportando solo su thumb. */
+        .rango-doble {
+            position: relative;
+            flex: 1;
+            height: 24px;
+        }
+        .rd-pista, .rd-seleccion {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            height: 6px;
+            border-radius: 3px;
+            pointer-events: none;
+        }
+        .rd-pista { left: 0; right: 0; background-color: #334155; }
+        .rd-seleccion { background-color: #38bdf8; opacity: 0.45; }
+        .rango-doble input[type="range"] {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 24px;
+            margin: 0;
+            -webkit-appearance: none;
+            appearance: none;
+            background: transparent;
+        }
+        .rango-doble input[type="range"]:focus { outline: none; }
+        .rango-doble input[type="range"]::-webkit-slider-runnable-track {
+            height: 24px; background: transparent; border: none;
+        }
+        .rango-doble input[type="range"]::-moz-range-track {
+            height: 24px; background: transparent; border: none;
+        }
+
+        /* Cabezal de reproducción: ocupa toda la pista, así un clic en ella hace seek. */
+        .rd-playhead { z-index: 2; cursor: pointer; }
+        .rd-playhead::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 4px; height: 18px; margin-top: 3px;
+            border-radius: 2px;
+            background-color: #f8fafc;
+            box-shadow: 0 0 0 1px #0f172a;
+            cursor: pointer;
+        }
+        .rd-playhead::-moz-range-thumb {
+            width: 4px; height: 18px;
+            border: none; border-radius: 2px;
+            background-color: #f8fafc;
+            cursor: pointer;
+        }
+
+        /* Handles de inicio/fin: solo el thumb captura el ratón, para no tapar
+           la pista del cabezal. */
+        .rd-limite { z-index: 3; pointer-events: none; }
+        .rd-limite::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            pointer-events: auto;
+            width: 14px; height: 14px; margin-top: 5px;
+            border-radius: 50%;
+            background-color: #38bdf8;
+            border: 2px solid #0f172a;
+            cursor: ew-resize;
+        }
+        .rd-limite::-moz-range-thumb {
+            pointer-events: auto;
+            width: 14px; height: 14px;
+            border-radius: 50%;
+            background-color: #38bdf8;
+            border: 2px solid #0f172a;
+            cursor: ew-resize;
+        }
+        #rango-fin { z-index: 4; }
+        /* Cuando el cursor está más cerca del handle de inicio, este pasa arriba;
+           si no, los dos juntos serían inseparables. */
+        .rango-doble.rd-inicio-encima #rango-inicio { z-index: 5; }
+        .rango-doble.rd-off { opacity: 0.4; }
+        .rango-doble.rd-off input[type="range"] { cursor: not-allowed; }
+
+        .fila-intervalo {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            margin-bottom: 12px;
+            font-size: 11px;
+            color: #94a3b8;
+        }
+        #etiqueta-intervalo { font-variant-numeric: tabular-nums; }
+        .btn-mini {
+            background: transparent;
+            color: #94a3b8;
+            border: 1px solid #475569;
+            border-radius: 4px;
+            padding: 3px 8px;
+            font-size: 11px;
+            cursor: pointer;
+        }
+        .btn-mini:hover:not(:disabled) { color: #f8fafc; border-color: #64748b; }
+        .btn-mini:disabled { opacity: 0.3; cursor: not-allowed; }
+
+        .controles-reproductor {
+            display: flex;
+            gap: 8px;
+        }
+        .btn-control {
+            background-color: #475569;
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            flex: 1;
+            font-size: 12px;
+        }
+        .btn-control:hover { background-color: #64748b; }
+        .btn-control:disabled { opacity: 0.3; cursor: not-allowed; }
+        .btn-control.activo {
+            background-color: #38bdf8;
+            color: #0f172a;
+        }
+
+        .leyenda {
+            margin-top: 15px;
+            padding: 8px;
+            background: #0f172a;
+            border-radius: 4px;
+            font-size: 11px;
+            text-align: center;
+        }
+        .barra-color {
+            height: 8px;
+            background: linear-gradient(to right, #ef4444, #f0f0f2, #3b82f6);
+            border-radius: 3px;
+            margin-top: 5px;
+        }
+
+        /* Barra de herramientas tipo cinta (ribbon), estilo Explorador de Windows */
+        .ribbon {
+            margin-bottom: 20px;
+            background-color: #1e293b;
+            border: 1px solid #475569;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .ribbon-tabs {
+            display: flex;
+            gap: 2px;
+            padding: 0 8px;
+            background-color: #0f172a;
+            border-bottom: 1px solid #475569;
+        }
+        .ribbon-tab {
+            background: transparent;
+            color: #94a3b8;
+            border: none;
+            border-bottom: 2px solid transparent;
+            padding: 10px 18px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .ribbon-tab:hover { color: #f8fafc; background-color: #1e293b; }
+        .ribbon-tab.activo {
+            color: #38bdf8;
+            background-color: #1e293b;
+            border-bottom-color: #38bdf8;
+        }
+        .ribbon-panel {
+            padding: 12px;
+        }
+        .ribbon-contenido { display: none; }
+        .ribbon-contenido.activo { display: block; }
+        /* Recuadro en blanco: espacio reservado para futuros iconos/herramientas */
+        .ribbon-recuadro {
+            min-height: 90px;
+            border: 1px dashed #475569;
+            border-radius: 6px;
+            background-color: #0f172a;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div>
+            <h1 style="margin:0;">Deriva - Reproductor de Telemetría</h1>
+            <p style="margin:5px 0 0 0;">Estado: <span id="estado-sistema" style="color: #94a3b8;">○ Esperando log (.csv)</span></p>
+        </div>
+        <label class="btn-subir">
+            Cargar Log de Regata
+            <input type="file" id="archivo-csv" accept=".csv" style="display: none;">
+        </label>
+    </header>
+
+    <div class="ribbon">
+        <div class="ribbon-tabs">
+            <button type="button" class="ribbon-tab activo" data-tab="regata">Regata</button>
+            <button type="button" class="ribbon-tab" data-tab="datos">Datos</button>
+            <button type="button" class="ribbon-tab" data-tab="visualizacion">Visualización</button>
+            <button type="button" class="ribbon-tab" data-tab="herramientas">Herramientas</button>
+            <button type="button" class="ribbon-tab" data-tab="opciones">Opciones</button>
+        </div>
+        <div class="ribbon-panel">
+            <div class="ribbon-contenido activo" data-panel="regata"><div class="ribbon-recuadro"></div></div>
+            <div class="ribbon-contenido" data-panel="datos"><div class="ribbon-recuadro"></div></div>
+            <div class="ribbon-contenido" data-panel="visualizacion"><div class="ribbon-recuadro"></div></div>
+            <div class="ribbon-contenido" data-panel="herramientas"><div class="ribbon-recuadro"></div></div>
+            <div class="ribbon-contenido" data-panel="opciones"><div class="ribbon-recuadro"></div></div>
+        </div>
+    </div>
+
+    <div class="dashboard">
+        <div class="panel">
+            <h2 style="margin-top: 0; color: #38bdf8; font-size: 15px;">Tramos del Recorrido</h2>
+            <hr style="border-color: #334155; margin-bottom: 12px;">
+            <div class="resumen-tramos">
+                <span class="conteo conteo-cenida">Ceñida: <b id="conteo-cenida">--</b></span>
+                <span class="conteo conteo-popa">Popa: <b id="conteo-popa">--</b></span>
+            </div>
+            <ul class="lista-tramos" id="lista-tramos">
+                <li class="tramos-vacio">Carga un log para detectar los tramos.</li>
+            </ul>
+        </div>
+
+        <div class="visor-reproductor">
+            <div class="mapa-contenedor">
+                <div class="mapa-marco">
+                    <div id="mapa"></div>
+                    <div class="zoom-custom">
+                        <button type="button" id="btn-zoom-in" title="Acercar">+</button>
+                        <button type="button" id="btn-zoom-out" title="Alejar">−</button>
+                    </div>
+                    <div class="atribucion-custom">Leaflet | © OpenStreetMap © CARTO</div>
+                </div>
+                <button class="btn-orientacion" id="btn-orientacion" disabled title="Sin datos de viento">🧭</button>
+            </div>
+
+            <div class="barra-controles">
+                <div class="fila-progreso">
+                    <span class="tiempo-barra" id="tiempo-actual-barra">00:00:00</span>
+                    <div class="rango-doble rd-off" id="rango-doble">
+                        <div class="rd-pista"></div>
+                        <div class="rd-seleccion" id="rd-seleccion"></div>
+                        <input type="range" class="rd-playhead" id="barra-progreso" min="0" max="0" value="0" disabled
+                               aria-label="Posición de reproducción">
+                        <input type="range" class="rd-limite" id="rango-inicio" min="0" max="0" value="0" disabled
+                               aria-label="Inicio del intervalo">
+                        <input type="range" class="rd-limite" id="rango-fin" min="0" max="0" value="0" disabled
+                               aria-label="Fin del intervalo">
+                    </div>
+                    <span class="tiempo-barra" id="tiempo-total-barra">00:00:00</span>
+                </div>
+                <div class="fila-intervalo">
+                    <span id="etiqueta-intervalo">Intervalo: recorrido completo</span>
+                    <button type="button" class="btn-mini" id="btn-reset-intervalo" disabled>Intervalo completo</button>
+                </div>
+                <div class="controles-reproductor">
+                    <button class="btn-control" id="btn-play" disabled>▶ Play</button>
+                    <button class="btn-control" id="btn-pausa" disabled>║ Pausa</button>
+                    <button class="btn-control" id="btn-reset" disabled>⟲ Reset</button>
+                    <button class="btn-control" id="btn-velocidad" disabled>⏩ x1</button>
+                    <button class="btn-control" id="btn-toggle-recorrido" disabled>👁 Recorrido: OFF</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="panel">
+            <h2 style="margin-top: 0; color: #38bdf8; font-size: 15px;">Telemetría Dinámica</h2>
+            <hr style="border-color: #334155; margin-bottom: 12px;">
+
+            <div class="dato-grupo"><p class="label">Tiempo Transcurrido</p><p class="dato" id="val-duracion">00:00:00</p></div>
+            <div class="dato-grupo"><p class="label">Distancia Estimada</p><p class="dato" id="val-distancia">0.00 nm</p></div>
+            <div class="dato-grupo"><p class="label">Velocidad Actual (SOG)</p><p class="dato" id="val-sog" style="color: #38bdf8;">0.0 kts</p></div>
+            <div class="dato-grupo"><p class="label">Rumbo Actual (COG)</p><p class="dato" id="val-rumbo" style="color: #eab308;">000°</p></div>
+            <div class="dato-grupo"><p class="label">Viradas (ceñida)</p><p class="dato" id="val-viradas" style="color: #f8fafc;">--</p></div>
+            <div class="dato-grupo"><p class="label">Trasluchadas (largo)</p><p class="dato" id="val-trasluchadas" style="color: #f8fafc;">--</p></div>
+
+            <div class="leyenda">
+                Escala Térmica de Velocidad
+                <div class="barra-color"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script type="module" src="src/main.js"></script>
+</body>
+</html>
